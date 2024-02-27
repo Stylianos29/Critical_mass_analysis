@@ -356,7 +356,7 @@ def main(data_files_directory, data_files_extension, plotting_directory):
 
     
     for index, number_of_Chebyshev_terms in enumerate(number_of_Chebyshev_terms_array):
-        ax.annotate(number_of_Chebyshev_terms, (number_of_Chebyshev_terms_array[index], gv.mean(critical_mass_values_array[index])), xytext=(5, 5), textcoords="offset pixels", color='brown', bbox=dict(facecolor='none', edgecolor='black'))
+        ax.annotate(number_of_Chebyshev_terms, (number_of_Chebyshev_terms_array[index], gv.mean(critical_mass_values_array[index])), xytext=(15, 5), textcoords="offset pixels", color='brown', bbox=dict(facecolor='none', edgecolor='black'))
 
     ax.legend(loc="upper right")
 
