@@ -45,44 +45,48 @@ def main(data_files_directory, data_files_extension, plotting_directory):
 
     # PREPARE THE SUBDIRECTORIES STRUCTURE OF THE PLOTTING DIRECTORY
 
-    # Replicate the subdirectories structure of the data files directory inside the plotting directory. Ignore if it is already established. Store in a list all the plotting subdirectories
-    plotting_subdirectories_paths_list = directories_organization.replicate_directory_structure(data_files_directory, plotting_directory)
+    # Replicate the subdirectories structure of the data files directory inside the plotting directory up to depth 2. Ignore if it is already established. Store in a list all the created plotting subdirectories without any filter
+    list_of_created_subdirectories = directories_organization.replicate_directory_structure(data_files_directory, plotting_directory)
+    # Select only those subdirectories that have leaf subdirectories "Standard" or "Brillouin"
+    plotting_subdirectories_paths_list = [subdirectory for subdirectory in list_of_created_subdirectories if any(substring in subdirectory for substring in ["Standard", "Brillouin"])]
 
     # Additionally create in each subdirectory another two subdirectories from the following list for storing plots per kappa value
     additional_plotting_subdirectories_names_list = ["Time_dependence_of_effective_mass_values", "Time_dependence_of_jackknife_averaged_momentum_correlator"]
     for plotting_subdirectory_path in plotting_subdirectories_paths_list:
         for additional_plotting_subdirectory in additional_plotting_subdirectories_names_list:
-            target_path = os.path.join(plotting_subdirectory_path, additional_plotting_subdirectory)
-            if not os.path.exists(target_path):
-                os.makedirs(target_path)
+            additional_plotting_subdirectory_path = os.path.join(plotting_subdirectory_path, additional_plotting_subdirectory)
+            if not os.path.exists(additional_plotting_subdirectory_path):
+                os.makedirs(additional_plotting_subdirectory_path)
 
     # List the paths of all subdirectories of the input data files directory that contain dataset files
     data_files_subdirectories_paths_list = directories_organization.list_leaf_subdirectories(data_files_directory)
+    # Filter those that contain the "/processed_data_files" leaf subdirectory
+    processed_data_files_subdirectories_paths_list = [subdirectory for subdirectory in data_files_subdirectories_paths_list if "/processed_data_files" in subdirectory]
 
     critical_mass_values_dictionary = dict()
-    for data_files_subdirectory_path in data_files_subdirectories_paths_list:
+    for processed_data_files_subdirectory_path in processed_data_files_subdirectories_paths_list:
 
         # For later use
         # Extract the basename of the file or subdirectory
-        operator_type_label = os.path.basename(data_files_subdirectory_path)
+        operator_type_label = os.path.basename(processed_data_files_subdirectory_path)
 
         # Extract operator info from subdirectory name
         operator_type_info = info_extraction.operator_type_extraction(operator_type_label)
 
         operator_type, operator_method, operator_method_enumeration = operator_type_info
 
-        print(f'\nWorking with {os.path.basename(data_files_subdirectory_path)} datasets:')
+        print(f'\nWorking with {os.path.basename(processed_data_files_subdirectory_path)} datasets:')
 
         # ANALYZE EACH DATA FILE IN THE SUBDIRECTORY
 
         # Initialize dictionary with kappa values as keys and nested dictionaries as values which in their turn have configuration labels as keys and for values a NumPy array with the momentum correlator values
         momentum_correlator_values_per_kappa_per_configuration_dictionary = dict()
-        for data_file_path in os.listdir(data_files_subdirectory_path):
+        for data_file_path in os.listdir(processed_data_files_subdirectory_path):
             # Additional safety check if data file ends with appropriate extension
             if data_file_path.endswith(data_files_extension):
 
                 # Properties of each dataset are extracted from its filename. Its content are the values of the momentum correlator. Internally an additional check is performed on operator type info
-                data_file_path = os.path.join(data_files_subdirectory_path, data_file_path)
+                data_file_path = os.path.join(processed_data_files_subdirectory_path, data_file_path)
                 dataset_object = info_extraction.AnalyzeDataset(data_file_path, operator_type_info)
                 
                 # If the list of keys does not contain the kappa value then initialize the corresponding value with a nested dictionary
@@ -156,7 +160,7 @@ def main(data_files_directory, data_files_extension, plotting_directory):
             ax.legend(loc="upper center")
 
             # ?????????
-            plotting_subdirectory = directories_organization.change_root(data_files_subdirectory_path, data_files_directory, plotting_directory)
+            plotting_subdirectory = directories_organization.change_root(processed_data_files_subdirectory_path, data_files_directory, plotting_directory)
             effective_mass_plotting_subdirectory = os.path.join(plotting_subdirectory, additional_plotting_subdirectories_names_list[0])
             # Additional check
             if not os.path.exists(effective_mass_plotting_subdirectory):
@@ -264,38 +268,67 @@ def main(data_files_directory, data_files_extension, plotting_directory):
         fig, ax = plt.subplots()
         ax.grid()
 
-        ax.set_title(f'Effective mass squared Vs. bare mass values\n({operator_type_label}, # of configs={effective_mass_replica_estimates_2D_array.shape[1]}, T={temporal_direction_lattice_size}, APE iters=1, cw=1)')
+        print(f"shape={effective_mass_replica_estimates_2D_array.shape}")
+
+        sample_size = effective_mass_replica_estimates_2D_array.shape[1]
+        ax.set_title(f'Effective pion mass squared Vs. bare mass values\n({operator_type_label}, # of configs={sample_size}, T={temporal_direction_lattice_size}, APE iters=1, cw=1)')
         ax.set(xlabel='$a m_b$', ylabel='$m^2_{eff.}$')
 
         ax.axhline(0, color='black') # y = 0
         ax.axvline(0, color='black') # x = 0
 
+        # Sort
+        sorted_indices = np.argsort(bare_mass_values_array)
+        bare_mass_values_array = bare_mass_values_array[sorted_indices]
+        average_squared_effective_mass_estimates_array = average_squared_effective_mass_estimates_array[sorted_indices]
+
         plt.errorbar(bare_mass_values_array, gv.mean(average_squared_effective_mass_estimates_array), yerr=gv.sdev(average_squared_effective_mass_estimates_array), fmt='.', markersize=8, capsize=10)
+                    #  , label=f'Optimum fitting range: {critical_mass_optimum_range[0], critical_mass_optimum_range[1]-1}')
+
+        # Find minimum and shift
+        min_index = np.argmin(average_squared_effective_mass_estimates_array)
+        if (min_index>0):
+            bare_mass_values_array = bare_mass_values_array[min_index:]
+            average_squared_effective_mass_estimates_array = average_squared_effective_mass_estimates_array[min_index:]
+
+        # Investigate optimum range
+        critical_mass_optimum_range = fit_functions.critical_mass_optimum_range(bare_mass_values_array, average_squared_effective_mass_estimates_array, sample_size)
+
+        print(f'critical_mass_optimum_range={critical_mass_optimum_range}')
 
         # Linear fit
-        x = bare_mass_values_array
-        y = average_squared_effective_mass_estimates_array
+        x = bare_mass_values_array[critical_mass_optimum_range[0]:critical_mass_optimum_range[1]]
+        y = average_squared_effective_mass_estimates_array[critical_mass_optimum_range[0]:critical_mass_optimum_range[1]]
         # # The initial estimate for the effective mass equals the value 
         slope = (max(gv.mean(y)) - min(gv.mean(y)))/(max(gv.mean(x)) - min(gv.mean(x)))
         linear_fit_p0 = [slope, -min(gv.mean(y))/slope+min(x)]
         index_cut = -1
         # [:index_cut]
         linear_fit = lsqfit.nonlinear_fit(data=(x, y), p0=linear_fit_p0, fcn=fit_functions.linear_function, debug=True)
-        
+
         margin = 0.03
         if (gv.mean(linear_fit.p[1])<0):
             margin = -margin
-        x_data = np.linspace(gv.mean(linear_fit.p[1])*(1-margin), max(gv.mean(x))*(1+margin), 100)
+        left_edge = linear_fit.p[1]
+        if (operator_method == "KL"):
+            left_edge = 0
+        x_data = np.linspace(gv.mean(left_edge)*(1-margin), max(gv.mean(x))*(1+margin), 100)
         y_data = fit_functions.linear_function(x_data, linear_fit.p)
         kappa_critical = 0.5/(linear_fit.p[1]+4)
         plt.plot(x_data, gv.mean(y_data), 'r--', label=f'linear fit ($\\chi^2$/dof={linear_fit.chi2:.2f}/{linear_fit.dof}={linear_fit.chi2/linear_fit.dof:.2f}):\n$a m_c$={linear_fit.p[1]:.5f}, $\\kappa_c$={kappa_critical:.6f}')
         ax.fill_between(x_data, gv.mean(y_data) - gv.sdev(y_data), gv.mean(y_data) + gv.sdev(y_data), color='r', alpha=0.2)
 
         # Quadratic fit
+        x = bare_mass_values_array
+        y = average_squared_effective_mass_estimates_array
         quadratic_fit_p0 = [gv.mean(linear_fit.p[0]), gv.mean(linear_fit.p[1]), 0.1*gv.mean(linear_fit.p[1])]
         quadratic_fit = lsqfit.nonlinear_fit(data=(x, y), p0=quadratic_fit_p0, fcn=fit_functions.quadratic_function, debug=True)
-        x_data = np.linspace(gv.mean(quadratic_fit.p[1])*(1-margin), max(gv.mean(x))*(1+margin), 100)
+        left_edge = quadratic_fit.p[1]
+        if (operator_method == "KL"):
+            left_edge = 0
+        x_data = np.linspace(gv.mean(left_edge)*(1-margin), max(gv.mean(x))*(1+margin), 100)
         y_data = fit_functions.quadratic_function(x_data, quadratic_fit.p)
+        kappa_critical = 0.5/(quadratic_fit.p[1]+4)
         plt.plot(x_data, gv.mean(y_data), 'g--', label=f'quadratic fit ($\\chi^2$/dof={quadratic_fit.chi2:.2f}/{quadratic_fit.dof}={quadratic_fit.chi2/quadratic_fit.dof:.2f}):\n$a m_c$={quadratic_fit.p[1]:.5f}, $\\kappa_c$={kappa_critical:.6f}')
         ax.fill_between(x_data, gv.mean(y_data) - gv.sdev(y_data), gv.mean(y_data) + gv.sdev(y_data), color='g', alpha=0.2)
 
@@ -305,6 +338,10 @@ def main(data_files_directory, data_files_extension, plotting_directory):
         else:
             ax.legend(loc="lower right")
 
+        # ???
+        y_axis_margin = 0.25
+        ax.set_ylim(-max(gv.mean(average_squared_effective_mass_estimates_array))/3, max(gv.mean(average_squared_effective_mass_estimates_array)*(1 + y_axis_margin)))
+
         plot_filename = f'Effective_mass_squared_Vs_bare_mass_{operator_type_label}.png'
         plot_path = os.path.join(plotting_subdirectory, plot_filename)
         fig.savefig(plot_path)
@@ -312,23 +349,28 @@ def main(data_files_directory, data_files_extension, plotting_directory):
 
         print("Effective against bare mass plot created.")
 
-        if ("Chebyshev" in operator_type_label) or ("KL" in operator_type_label):
-            critical_mass_values_dictionary[operator_type_label] = linear_fit.p[1]
+        if ("Standard_Chebyshev" in operator_type_label):
+            # or ("KL" in operator_type_label)
+            critical_mass_values_dictionary[operator_type_label] = linear_fit.p[1], sample_size
 
     # PLOT CRITICAL MASS AGAINST OPERATOR METHOD ENUMERATION
 
     number_of_Chebyshev_terms_array = list()
     for operator_type_label in critical_mass_values_dictionary.keys():
-
         operator_type, operator_method, operator_method_enumeration = info_extraction.operator_type_extraction(operator_type_label)
         number_of_Chebyshev_terms_array.append(operator_method_enumeration)
 
     number_of_Chebyshev_terms_array = np.array(number_of_Chebyshev_terms_array)
-    critical_mass_values_array = np.array(list(critical_mass_values_dictionary.values()))
+    critical_mass_values_array = np.array([value_tuple[0] for value_tuple in critical_mass_values_dictionary.values()])
+    sample_size_array = np.array([value_tuple[1] for value_tuple in critical_mass_values_dictionary.values()])
+
+    print(number_of_Chebyshev_terms_array)
+    print(critical_mass_values_array)
 
     sorted_indices = np.argsort(number_of_Chebyshev_terms_array)
     number_of_Chebyshev_terms_array = number_of_Chebyshev_terms_array[sorted_indices]
     critical_mass_values_array = critical_mass_values_array[sorted_indices]
+    sample_size_array = sample_size_array[sorted_indices]
 
     fig, ax = plt.subplots()
     ax.grid()
@@ -336,13 +378,14 @@ def main(data_files_directory, data_files_extension, plotting_directory):
     ax.set_title(f'Critical mass Vs. number of Chebyshev term\n({operator_type} {operator_method}, T={temporal_direction_lattice_size}, APE iters=1, cw=1)')
     ax.set(xlabel='N', ylabel='$a m^{critical}_b$')
     ax.set_yscale('log')
+    ax.set_xlim(min(number_of_Chebyshev_terms_array) - 5, max(number_of_Chebyshev_terms_array) + 10)
 
     plt.errorbar(number_of_Chebyshev_terms_array, gv.mean(critical_mass_values_array), yerr=gv.sdev(critical_mass_values_array), fmt='.', markersize=8, capsize=10)
 
     # Exponential fit
     index_cut = 1
-    x = number_of_Chebyshev_terms_array[index_cut:]
-    y = critical_mass_values_array[index_cut:]
+    x = number_of_Chebyshev_terms_array[index_cut:-2]
+    y = critical_mass_values_array[index_cut:-2]
 
     attenuation_rate = gv.mean(-np.log(y[-1]/y[-2])/(x[-1]-x)[-2])
     amplitude_factor = gv.mean( y[-1]/np.exp(-attenuation_rate*x[-1]) )
@@ -351,12 +394,12 @@ def main(data_files_directory, data_files_extension, plotting_directory):
 
     # Plot line
     x_data = np.linspace(min(number_of_Chebyshev_terms_array), max(number_of_Chebyshev_terms_array), 100)
-    y_data = gv.mean(fit_functions.simple_exponential_function(x_data, critical_mass_exponential_fit.p))                                              
-    plt.plot(x_data, y_data, 'r--', label=f'Exponential fit: {critical_mass_exponential_fit.p[0]:.2f} exp(-{critical_mass_exponential_fit.p[1]:2f} N)')
+    y_data = gv.mean(fit_functions.simple_exponential_function(x_data, critical_mass_exponential_fit.p))                                     
 
+    plt.plot(x_data, y_data, 'r--', label=f'Exponential fit: {critical_mass_exponential_fit.p[0]:.2f}$\\times$exp(-{critical_mass_exponential_fit.p[1]:.2f}$\\times$N)')
     
-    for index, number_of_Chebyshev_terms in enumerate(number_of_Chebyshev_terms_array):
-        ax.annotate(number_of_Chebyshev_terms, (number_of_Chebyshev_terms_array[index], gv.mean(critical_mass_values_array[index])), xytext=(15, 5), textcoords="offset pixels", color='brown', bbox=dict(facecolor='none', edgecolor='black'))
+    for index, sample_size in enumerate(sample_size_array):
+        ax.annotate(sample_size, (number_of_Chebyshev_terms_array[index], gv.mean(critical_mass_values_array[index])), xytext=(0, 15), textcoords="offset pixels", color='brown', bbox=dict(facecolor='none', edgecolor='black'))
 
     ax.legend(loc="upper right")
 
@@ -365,6 +408,8 @@ def main(data_files_directory, data_files_extension, plotting_directory):
     plot_path = os.path.join(plotting_subdirectory, plot_filename)
     fig.savefig(plot_path)
     plt.close()
+
+    print("Critical mass against operator enumeration plot created.")
 
 
 if __name__ == "__main__":
