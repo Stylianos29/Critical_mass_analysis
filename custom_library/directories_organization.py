@@ -1,21 +1,30 @@
 import os
 
+
 def replicate_directory_structure(source_directory, target_directory):
-    '''Walk through the source directory and create the same structure in the target directory. It returns the list of subdirectories paths.'''
-
-    subdirectories_paths_list = list()
-    for root, dirs, files in os.walk(source_directory):
-        relative_path = os.path.relpath(root, source_directory)
-        target_path = os.path.join(target_directory, relative_path)
-
-        if not os.path.exists(target_path):
-            os.makedirs(target_path)
-
-        # Append to the list only subdirectories without any further subdirectories or files
-        if not dirs and files:
-            subdirectories_paths_list.append(target_path)
+    
+    # Create the target directory if it doesn't exist
+    if not os.path.exists(target_directory):
+        print(f"Warning: Target directory '{target_directory}' does not exist.")
+        print("Exiting.")
         
-    return subdirectories_paths_list
+        return
+
+    # Walk through the source directory
+    for root, dirs, _ in os.walk(source_directory):
+        # Calculate the relative path from the source directory
+        relative_path = os.path.relpath(root, source_directory)
+
+        # Combine the relative path with the target directory to get the new directory path
+        new_directory = os.path.join(target_directory, relative_path)
+
+        # Create the new directory if it doesn't exist
+        if not os.path.exists(new_directory):
+            os.makedirs(new_directory)
+
+        # Limit the depth to 2 by removing subdirectories beyond depth 2
+        if new_directory.count(os.path.sep) - target_directory.count(os.path.sep) >= 2:
+            del dirs[:]
 
 
 def list_leaf_subdirectories(directory):
